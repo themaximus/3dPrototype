@@ -5,12 +5,16 @@ public class RailPath : MonoBehaviour
 {
     public Color debugColor = Color.yellow;
     public bool loop = false;
-    public int resolution = 10;
+    [Tooltip("РљРѕР»РёС‡РµСЃС‚РІРѕ СЃРµРіРјРµРЅС‚РѕРІ РЅР° РѕРґРёРЅ СѓС‡Р°СЃС‚РѕРє СЂРµР»СЊСЃ. РЈРІРµР»РёС‡СЊС‚Рµ РґР»СЏ Р±РѕР»РµРµ РїР»Р°РІРЅС‹С… РїРѕРІРѕСЂРѕС‚РѕРІ.")]
+    public int resolution = 20; // РЈРІРµР»РёС‡РёР»Рё РґРµС„РѕР»С‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ РґР»СЏ РїР»Р°РІРЅРѕСЃС‚Рё
 
     [HideInInspector] public bool isBranch = false;
 
-    // НОВОЕ: Точка, откуда "виртуально" пришел поезд. Нужна для расчета инерции на старте ветки.
+    // РЎСЃС‹Р»РєР° РЅР° С„РёР·РёС‡РµСЃРєСѓСЋ С‚РѕС‡РєСѓ СЂРѕРґРёС‚РµР»СЏ (СЃС‚Р°СЂС‹Р№ РјРµС‚РѕРґ)
     [HideInInspector] public Transform phantomStartPoint;
+
+    // РќРћР’РћР•: Р’РёСЂС‚СѓР°Р»СЊРЅР°СЏ С‚РѕС‡РєР° РґР»СЏ РёРґРµР°Р»СЊРЅРѕРіРѕ РјР°С‚РµРјР°С‚РёС‡РµСЃРєРѕРіРѕ СЃС‚С‹РєР°
+    [HideInInspector] public Vector3? calculatedPhantomPoint;
 
     public float TotalLength { get; private set; } = 0;
 
@@ -23,7 +27,8 @@ public class RailPath : MonoBehaviour
 
     private void OnValidate()
     {
-        RecalculatePath();
+        // РќРµ РїРµСЂРµСЃС‡РёС‚С‹РІР°РµРј РІ СЂР°РЅС‚Р°Р№РјРµ РєР°Р¶РґС‹Р№ РєР°РґСЂ, С‚РѕР»СЊРєРѕ РїСЂРё РёР·РјРµРЅРµРЅРёСЏС…
+        if (!Application.isPlaying) RecalculatePath();
     }
 
     [ContextMenu("Recalculate Path")]
@@ -37,8 +42,7 @@ public class RailPath : MonoBehaviour
             waypoints.Add(transform);
         }
 
-        // Собираем точки и ищем ветки
-        // Используем for, чтобы иметь доступ к индексу и найти "предыдущую" точку
+        // РЎРѕР±РёСЂР°РµРј С‚РѕС‡РєРё
         List<Transform> currentChildren = new List<Transform>();
         foreach (Transform child in transform)
         {
@@ -52,7 +56,7 @@ public class RailPath : MonoBehaviour
             Transform child = currentChildren[i];
             waypoints.Add(child);
 
-            // Проверяем на ветвление
+            // РџСЂРѕРІРµСЂСЏРµРј РЅР° РІРµС‚РІР»РµРЅРёРµ
             if (HasValidChildren(child))
             {
                 RailPath branchPath = child.GetComponent<RailPath>();
@@ -62,22 +66,43 @@ public class RailPath : MonoBehaviour
                 branchPath.debugColor = Color.cyan;
                 branchPath.resolution = this.resolution;
 
-                // --- МАГИЯ ПЛАВНОСТИ ---
-                // Передаем ветке точку, которая была ПЕРЕД развилкой.
-                // Если развилка - это текущий child (waypoints[last]), то предыдущая - это waypoints[last-1].
-                // Если мы только начали и child - первая точка, берем phantomStartPoint текущего пути.
+                // --- РќРћР’РђРЇ Р›РћР“РРљРђ РџР›РђР’РќР«РҐ РЎРўР«РљРћР’ ---
+                // Р’РјРµСЃС‚Рѕ С‚РѕРіРѕ С‡С‚РѕР±С‹ РїСЂРѕСЃС‚Рѕ Р±СЂР°С‚СЊ РїСЂРµРґС‹РґСѓС‰СѓСЋ С‚РѕС‡РєСѓ, РјС‹ СЂР°СЃСЃС‡РёС‚С‹РІР°РµРј РІРµРєС‚РѕСЂ
                 if (waypoints.Count >= 2)
                 {
-                    branchPath.phantomStartPoint = waypoints[waypoints.Count - 2];
+                    // 1. РџРѕР»СѓС‡Р°РµРј РїСЂРµРґС‹РґСѓС‰СѓСЋ С‚РѕС‡РєСѓ РЅР° РћРЎРќРћР’РќРћРњ РїСѓС‚Рё
+                    Transform prevPoint = waypoints[waypoints.Count - 2];
+
+                    // 2. Р’С‹С‡РёСЃР»СЏРµРј РІРµРєС‚РѕСЂ РґРІРёР¶РµРЅРёСЏ (РєР°СЃР°С‚РµР»СЊРЅСѓСЋ) РІ С‚РѕС‡РєРµ СЃС‚С‹РєР°
+                    Vector3 incomingTangent = (child.position - prevPoint.position).normalized;
+
+                    // 3. РќР°С…РѕРґРёРј РїРµСЂРІСѓСЋ С‚РѕС‡РєСѓ РЅР° Р’Р•РўРљР•, С‡С‚РѕР±С‹ РїРѕРЅСЏС‚СЊ РјР°СЃС€С‚Р°Р± РёР·РіРёР±Р°
+                    float branchSegmentLength = 1.0f; // Р”РµС„РѕР»С‚
+                    foreach (Transform branchChild in child)
+                    {
+                        if (!branchChild.name.StartsWith("Track_Container") && branchChild.gameObject.activeInHierarchy)
+                        {
+                            branchSegmentLength = Vector3.Distance(child.position, branchChild.position);
+                            break;
+                        }
+                    }
+
+                    // 4. РЎРѕР·РґР°РµРј "РРґРµР°Р»СЊРЅСѓСЋ С„Р°РЅС‚РѕРјРЅСѓСЋ С‚РѕС‡РєСѓ" СЃС‚СЂРѕРіРѕ РїРѕР·Р°РґРё СЃС‚С‹РєР° РїРѕ РІРµРєС‚РѕСЂСѓ РґРІРёР¶РµРЅРёСЏ.
+                    // Р­С‚Рѕ Р·Р°СЃС‚Р°РІРёС‚ Catmull-Rom СЃРїР»Р°Р№РЅ РІС‹Р№С‚Рё РёР· СЃС‚С‹РєР° РїСЂСЏРјРѕ, Р° РїРѕС‚РѕРј РїР»Р°РІРЅРѕ РїРѕРІРµСЂРЅСѓС‚СЊ.
+                    branchPath.calculatedPhantomPoint = child.position - (incomingTangent * branchSegmentLength);
+
+                    // Р”Р»СЏ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё РѕСЃС‚Р°РІР»СЏРµРј СЃСЃС‹Р»РєСѓ
+                    branchPath.phantomStartPoint = prevPoint;
                 }
-                else if (this.phantomStartPoint != null)
+                else if (this.phantomStartPoint != null || this.calculatedPhantomPoint.HasValue)
                 {
+                    // Р•СЃР»Рё СЌС‚Рѕ РІРµС‚РєР° РѕС‚ РІРµС‚РєРё, РїРµСЂРµРґР°РµРј РїР°СЂР°РјРµС‚СЂС‹ РґР°Р»СЊС€Рµ
                     branchPath.phantomStartPoint = this.phantomStartPoint;
+                    branchPath.calculatedPhantomPoint = this.calculatedPhantomPoint;
                 }
 
                 childBranches.Add(branchPath);
 
-                // Важно: сначала задали phantomPoint, потом пересчитали
                 branchPath.RecalculatePath();
             }
         }
@@ -122,8 +147,7 @@ public class RailPath : MonoBehaviour
         }
     }
 
-    // --- ВСПОМОГАТЕЛЬНЫЙ МЕТОД ПОЛУЧЕНИЯ ПОЗИЦИИ ---
-    // Вся логика плавности здесь: если просят точку -1, мы отдаем фантомную
+    // --- РњР•РўРћР” РџРћР›РЈР§Р•РќРРЇ РџРћР—РР¦РР РЎ РџР РРћР РРўР•РўРћРњ РќРђ Р’РР РўРЈРђР›Р¬РќРЈР® РўРћР§РљРЈ ---
     private Vector3 GetPointPos(int index)
     {
         int count = waypoints.Count;
@@ -136,21 +160,24 @@ public class RailPath : MonoBehaviour
         }
         else
         {
-            // Если просят точку "перед началом" (-1)
+            // РўРѕС‡РєР° "РїРµСЂРµРґ РЅР°С‡Р°Р»РѕРј" (-1)
             if (index < 0)
             {
-                // Если у нас есть фантомная точка (от родителя), используем её!
+                // 1. Р•СЃР»Рё СЂР°СЃСЃС‡РёС‚Р°РЅР° РёРґРµР°Р»СЊРЅР°СЏ С‚РѕС‡РєР° (New Logic), РёСЃРїРѕР»СЊР·СѓРµРј РµС‘
+                if (calculatedPhantomPoint.HasValue) return calculatedPhantomPoint.Value;
+
+                // 2. Р•СЃР»Рё РµСЃС‚СЊ СЃСЃС‹Р»РєР° РЅР° С‚СЂР°РЅСЃС„РѕСЂРј (Old Logic), РёСЃРїРѕР»СЊР·СѓРµРј РµРіРѕ
                 if (phantomStartPoint != null) return phantomStartPoint.position;
 
-                // Иначе экстраполируем (как раньше): берем первую точку
+                // 3. РРЅР°С‡Рµ СЌРєСЃС‚СЂР°РїРѕР»СЏС†РёСЏ
                 return waypoints[0].position - (waypoints[1].position - waypoints[0].position);
             }
 
-            // Если просят точку "после конца"
+            // РўРѕС‡РєР° "РїРѕСЃР»Рµ РєРѕРЅС†Р°"
             if (index >= count)
             {
-                // Экстраполяция конца
-                return waypoints[count - 1].position + (waypoints[count - 1].position - waypoints[count - 2].position);
+                int last = count - 1;
+                return waypoints[last].position + (waypoints[last].position - waypoints[last - 1].position);
             }
 
             return waypoints[index].position;
@@ -159,7 +186,6 @@ public class RailPath : MonoBehaviour
 
     public Vector3 GetPoint(int i, float t)
     {
-        // Используем новый метод получения координат
         Vector3 p0 = GetPointPos(i - 1);
         Vector3 p1 = GetPointPos(i);
         Vector3 p2 = GetPointPos(i + 1);
@@ -189,7 +215,7 @@ public class RailPath : MonoBehaviour
 
     public void GetPointAtDistance(float distance, out Vector3 position, out Quaternion rotation)
     {
-        if (waypoints == null || waypoints.Count == 0) RecalculatePath();
+        if (waypoints == null || waypoints.Count == 0) RecalculatePath(); // Safety check
 
         if (arcLengths.Count == 0) { position = transform.position; rotation = transform.rotation; return; }
 
@@ -222,11 +248,12 @@ public class RailPath : MonoBehaviour
 
         Gizmos.color = debugColor;
 
-        // Рисуем линию к фантомной точке для отладки, чтобы видеть связь
-        if (isBranch && phantomStartPoint != null)
+        // Р РёСЃСѓРµРј Р»РёРЅРёСЋ Рє РІРёСЂС‚СѓР°Р»СЊРЅРѕР№ С‚РѕС‡РєРµ РґР»СЏ РѕС‚Р»Р°РґРєРё
+        if (isBranch && calculatedPhantomPoint.HasValue)
         {
-            Gizmos.color = new Color(1, 1, 1, 0.3f);
-            Gizmos.DrawLine(phantomStartPoint.position, waypoints[0].position);
+            Gizmos.color = new Color(1, 0, 0, 0.5f); // РљСЂР°СЃРЅР°СЏ Р»РёРЅРёСЏ - РёРґРµР°Р»СЊРЅС‹Р№ РІРµРєС‚РѕСЂ РІС…РѕРґР°
+            Gizmos.DrawLine(calculatedPhantomPoint.Value, waypoints[0].position);
+            Gizmos.DrawSphere(calculatedPhantomPoint.Value, 0.1f);
             Gizmos.color = debugColor;
         }
 
