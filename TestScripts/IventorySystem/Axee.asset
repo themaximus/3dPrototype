@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ea6fad1b1b9f8e9409fc61640052e08f, type: 3}
+  m_Name: Axee
+  m_EditorClassIdentifier: 
+  itemName: Axe
+  description: "\u0422\u043E\u043F\u043E\u0440 "
+  itemIcon: {fileID: 21300000, guid: dff0d19fffd2d7746b54899150207385, type: 3}
+  itemType: 1
+  worldPrefab: {fileID: 1377093966354994893, guid: cdcccc04ad5b7414b83c1eefac7c4cfd,
+    type: 3}
+  isStackable: 0
+  maxStackSize: 1
+  weaponStats: {fileID: 11400000, guid: 3674c0c76b2bcd84e82e29fa2ac0756c, type: 2}
+  handModelPrefab: {fileID: 5482710813792977317, guid: 8263655854e11dd4398c76b60ca2e340,
+    type: 3}
